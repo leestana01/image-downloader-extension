@@ -1,15 +1,19 @@
-import { extensionFromUrl, makeDownloadName, matchesFilters, sanitizeFileName } from './core.js';
+import { createDownloadPlan, extensionFromUrl, matchesFilters, sanitizeFileName } from './core.js';
+import { fetchZipEntries, startIndividualDownloads } from './downloads.js';
 import { scanImages } from './scanner.js';
 import { createZip } from './zip.js';
 
-const state = { images: [], selected: new Set(), extensions: new Set(), view: 'grid' };
+const params = new URLSearchParams(location.search);
+const state = { images: [], selected: new Set(), extensions: new Set(), view: 'grid', sourceTabId: null };
+if (params.has('surface')) document.body.classList.add('standalone');
 const $ = (id) => document.getElementById(id);
 const elements = {
   summary: $('summary'), results: $('results'), empty: $('empty'), extensions: $('extensions'),
   selectAll: $('selectAll'), download: $('download'), baseName: $('baseName'), status: $('status'),
   minWidth: $('minWidth'), maxWidth: $('maxWidth'), minHeight: $('minHeight'), maxHeight: $('maxHeight'),
   gridView: $('gridView'), listView: $('listView'), rescan: $('rescan'), resetFilters: $('resetFilters'),
-  fullscreen: $('fullscreen'), downloadModes: [...document.querySelectorAll('input[name="downloadMode"]')]
+  openWindow: $('openWindow'), openTab: $('openTab'), openFullscreen: $('openFullscreen'),
+  downloadModes: [...document.querySelectorAll('input[name="downloadMode"]')]
 };
 
 function filters() {
@@ -128,9 +132,12 @@ async function loadImages() {
   elements.summary.textContent = '이미지를 검색하는 중…';
   elements.rescan.disabled = true;
   try {
-    const tabId = Number(new URLSearchParams(location.search).get('tabId'));
-    const tab = Number.isInteger(tabId) && tabId > 0 ? await chrome.tabs.get(tabId) : null;
+    const requestedTabId = Number(params.get('tabId'));
+    const tab = Number.isInteger(requestedTabId) && requestedTabId > 0
+      ? await chrome.tabs.get(requestedTabId)
+      : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
     if (!tab?.id || !/^https?:|^file:/.test(tab.url || '')) throw new Error('일반 웹페이지에서만 사용할 수 있습니다.');
+    state.sourceTabId = tab.id;
     const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: scanImages });
     state.images = result.map((image, id) => ({
       ...image, id, extension: extensionFromUrl(image.url), name: (() => {
@@ -151,38 +158,17 @@ async function loadImages() {
   }
 }
 
-async function downloadIndividually(selected) {
-  let completed = 0;
-  let failed = 0;
-  for (const [index, image] of selected.entries()) {
-    try {
-      await chrome.downloads.download({
-        url: image.url,
-        filename: makeDownloadName(image, index, selected.length, elements.baseName.value),
-        conflictAction: 'uniquify',
-        saveAs: false
-      });
-      completed += 1;
-    } catch { failed += 1; }
-    elements.status.textContent = `${completed + failed}/${selected.length} 처리 중…`;
-  }
+async function downloadIndividually(plan) {
+  const { completed, failed } = await startIndividualDownloads(plan, chrome.downloads, ({ completed: done, failed: errors, total }) => {
+    elements.status.textContent = `${done + errors}/${total} 처리 중…`;
+  });
   elements.status.textContent = failed ? `${completed}개 완료, ${failed}개 실패` : `${completed}개 다운로드를 시작했습니다.`;
 }
 
-async function downloadAsZip(selected) {
-  const files = [];
-  let failed = 0;
-  for (const [index, image] of selected.entries()) {
-    elements.status.textContent = `${index + 1}/${selected.length} ZIP 준비 중…`;
-    try {
-      const response = await fetch(image.url, { credentials: 'include', cache: 'force-cache' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      files.push({
-        name: makeDownloadName(image, index, selected.length, elements.baseName.value),
-        data: new Uint8Array(await response.arrayBuffer())
-      });
-    } catch { failed += 1; }
-  }
+async function downloadAsZip(plan) {
+  const { files, failed } = await fetchZipEntries(plan, fetch, ({ processed, total }) => {
+    elements.status.textContent = `${processed}/${total} ZIP 준비 중…`;
+  });
   if (!files.length) throw new Error('ZIP에 추가할 이미지를 가져오지 못했습니다.');
 
   elements.status.textContent = 'ZIP 파일을 생성하는 중…';
@@ -205,11 +191,12 @@ async function downloadAsZip(selected) {
 
 async function downloadSelected() {
   const selected = state.images.filter((image) => state.selected.has(image.id));
+  const plan = createDownloadPlan(selected, elements.baseName.value);
   elements.download.disabled = true;
   elements.status.textContent = '';
   try {
-    if (downloadMode() === 'zip') await downloadAsZip(selected);
-    else await downloadIndividually(selected);
+    if (downloadMode() === 'zip') await downloadAsZip(plan);
+    else await downloadIndividually(plan);
   } catch (error) {
     elements.status.textContent = error.message;
   }
@@ -226,10 +213,15 @@ elements.selectAll.addEventListener('change', () => {
 elements.gridView.addEventListener('click', () => setView('grid'));
 elements.listView.addEventListener('click', () => setView('list'));
 elements.rescan.addEventListener('click', loadImages);
-elements.fullscreen.addEventListener('click', async () => {
-  const current = await chrome.windows.getCurrent();
-  await chrome.windows.update(current.id, { state: current.state === 'fullscreen' ? 'normal' : 'fullscreen' });
-});
+async function openSurface(surface) {
+  if (!state.sourceTabId) return;
+  const response = await chrome.runtime.sendMessage({ action: 'openSurface', surface, sourceTabId: state.sourceTabId });
+  if (!response?.ok) throw new Error(response?.error || '화면을 열지 못했습니다.');
+  if (!params.has('surface')) window.close();
+}
+elements.openWindow.addEventListener('click', () => openSurface('window').catch((error) => { elements.status.textContent = error.message; }));
+elements.openTab.addEventListener('click', () => openSurface('tab').catch((error) => { elements.status.textContent = error.message; }));
+elements.openFullscreen.addEventListener('click', () => openSurface('fullscreen').catch((error) => { elements.status.textContent = error.message; }));
 elements.resetFilters.addEventListener('click', () => {
   for (const input of [elements.minWidth, elements.maxWidth, elements.minHeight, elements.maxHeight]) input.value = '';
   state.extensions.clear();
