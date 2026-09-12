@@ -30,6 +30,16 @@ function filteredImages() { return state.images.filter((image) => matchesFilters
 
 function downloadMode() { return elements.downloadModes.find((input) => input.checked)?.value || 'individual'; }
 
+function downloadFromPage({ url, filename }) {
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.hidden = true;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+}
+
 function renderExtensions() {
   const types = [...new Set(state.images.map((image) => image.extension))].sort();
   if (!types.length) {
@@ -159,8 +169,13 @@ async function loadImages() {
 }
 
 async function downloadIndividually(plan) {
-  const { completed, failed } = await startIndividualDownloads(plan, chrome.downloads, ({ completed: done, failed: errors, total }) => {
-    elements.status.textContent = `${done + errors}/${total} 처리 중…`;
+  const { completed, failed } = await startIndividualDownloads(plan, {
+    downloadFile: downloadFromPage,
+    fetcher: fetch,
+    urlApi: URL,
+    onProgress: ({ completed: done, failed: errors, total }) => {
+      elements.status.textContent = `${done + errors}/${total} 처리 중…`;
+    }
   });
   elements.status.textContent = failed ? `${completed}개 완료, ${failed}개 실패` : `${completed}개 다운로드를 시작했습니다.`;
 }

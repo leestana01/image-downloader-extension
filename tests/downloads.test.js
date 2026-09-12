@@ -8,13 +8,19 @@ const images = [
   { url: 'https://example.com/b.webp', extension: 'webp' }
 ];
 
-test('passes common names to every chrome.downloads.download call', async () => {
+test('passes common names to every individual download trigger', async () => {
   const calls = [];
+  const revoked = [];
   const result = await startIndividualDownloads(createDownloadPlan(images, 'product'), {
-    download: async (options) => { calls.push(options); return calls.length; }
+    downloadFile: async (options) => { calls.push(options); return calls.length; },
+    fetcher: async (url) => ({ ok: true, blob: async () => new Blob([url]) }),
+    urlApi: {
+      createObjectURL: (blob) => `blob:test-${blob.size}`,
+      revokeObjectURL: (url) => revoked.push(url)
+    }
   });
   assert.deepEqual(calls.map(({ filename }) => filename), ['product_01.jpg', 'product_02.webp']);
-  assert.ok(calls.every(({ conflictAction, saveAs }) => conflictAction === 'uniquify' && saveAs === false));
+  assert.ok(calls.every(({ url }) => url.startsWith('blob:test-')));
   assert.deepEqual(result, { completed: 2, failed: 0 });
 });
 
