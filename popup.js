@@ -7,7 +7,7 @@ const elements = {
   summary: $('summary'), results: $('results'), empty: $('empty'), extensions: $('extensions'),
   selectAll: $('selectAll'), download: $('download'), baseName: $('baseName'), status: $('status'),
   minWidth: $('minWidth'), maxWidth: $('maxWidth'), minHeight: $('minHeight'), maxHeight: $('maxHeight'),
-  gridView: $('gridView'), listView: $('listView'), rescan: $('rescan')
+  gridView: $('gridView'), listView: $('listView'), rescan: $('rescan'), resetFilters: $('resetFilters')
 };
 
 function filters() {
@@ -24,6 +24,13 @@ function filteredImages() { return state.images.filter((image) => matchesFilters
 
 function renderExtensions() {
   const types = [...new Set(state.images.map((image) => image.extension))].sort();
+  if (!types.length) {
+    const placeholder = document.createElement('span');
+    placeholder.className = 'extension-placeholder';
+    placeholder.textContent = '확장자 옵션이 여기에 표시됩니다';
+    elements.extensions.replaceChildren(placeholder);
+    return;
+  }
   elements.extensions.replaceChildren(...types.map((type) => {
     const label = document.createElement('label');
     label.className = 'extension-chip';
@@ -43,8 +50,11 @@ function renderExtensions() {
 
 function createCard(image) {
   const card = document.createElement('article');
-  card.className = `card${state.selected.has(image.id) ? ' selected' : ''}`;
+  card.className = `media-item${state.selected.has(image.id) ? ' selected' : ''}`;
   card.title = image.url;
+  card.tabIndex = 0;
+  card.setAttribute('role', 'checkbox');
+  card.setAttribute('aria-checked', state.selected.has(image.id));
   const checkbox = document.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.className = 'check';
@@ -54,7 +64,10 @@ function createCard(image) {
     checkbox.checked ? state.selected.add(image.id) : state.selected.delete(image.id);
     updateSelection();
     card.classList.toggle('selected', checkbox.checked);
+    card.setAttribute('aria-checked', checkbox.checked);
   });
+  const visual = document.createElement('div');
+  visual.className = 'visual';
   const preview = document.createElement('img');
   preview.className = 'thumb';
   preview.src = image.url;
@@ -69,7 +82,19 @@ function createCard(image) {
   dimensions.className = 'dimensions';
   dimensions.textContent = `${image.width || '?'} × ${image.height || '?'} · ${image.extension}`;
   meta.append(name, dimensions);
-  card.append(checkbox, preview, meta);
+  visual.append(preview, checkbox);
+  card.append(visual, meta);
+  const toggle = () => {
+    checkbox.checked = !checkbox.checked;
+    checkbox.dispatchEvent(new Event('change'));
+  };
+  card.addEventListener('click', (event) => { if (event.target !== checkbox) toggle(); });
+  card.addEventListener('keydown', (event) => {
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      toggle();
+    }
+  });
   return card;
 }
 
@@ -150,6 +175,12 @@ elements.selectAll.addEventListener('change', () => {
 elements.gridView.addEventListener('click', () => setView('grid'));
 elements.listView.addEventListener('click', () => setView('list'));
 elements.rescan.addEventListener('click', loadImages);
+elements.resetFilters.addEventListener('click', () => {
+  for (const input of [elements.minWidth, elements.maxWidth, elements.minHeight, elements.maxHeight]) input.value = '';
+  state.extensions.clear();
+  renderExtensions();
+  render();
+});
 elements.download.addEventListener('click', downloadSelected);
 
 function setView(view) {
