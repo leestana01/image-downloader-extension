@@ -1,5 +1,6 @@
-import { extensionFromUrl, makeDownloadName, matchesFilters } from './core.js';
+import { extensionFromUrl, makeDownloadName, matchesFilters, sanitizeFileName } from './core.js';
 import { scanImages } from './scanner.js';
+import { createZip } from './zip.js';
 
 const state = { images: [], selected: new Set(), extensions: new Set(), view: 'grid' };
 const $ = (id) => document.getElementById(id);
@@ -7,7 +8,8 @@ const elements = {
   summary: $('summary'), results: $('results'), empty: $('empty'), extensions: $('extensions'),
   selectAll: $('selectAll'), download: $('download'), baseName: $('baseName'), status: $('status'),
   minWidth: $('minWidth'), maxWidth: $('maxWidth'), minHeight: $('minHeight'), maxHeight: $('maxHeight'),
-  gridView: $('gridView'), listView: $('listView'), rescan: $('rescan'), resetFilters: $('resetFilters')
+  gridView: $('gridView'), listView: $('listView'), rescan: $('rescan'), resetFilters: $('resetFilters'),
+  fullscreen: $('fullscreen'), downloadModes: [...document.querySelectorAll('input[name="downloadMode"]')]
 };
 
 function filters() {
@@ -21,6 +23,8 @@ function filters() {
 }
 
 function filteredImages() { return state.images.filter((image) => matchesFilters(image, filters())); }
+
+function downloadMode() { return elements.downloadModes.find((input) => input.checked)?.value || 'individual'; }
 
 function renderExtensions() {
   const types = [...new Set(state.images.map((image) => image.extension))].sort();
@@ -104,7 +108,9 @@ function updateSelection() {
   elements.selectAll.checked = visible.length > 0 && selectedVisible === visible.length;
   elements.selectAll.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
   elements.download.disabled = state.selected.size === 0;
-  elements.download.textContent = state.selected.size ? `${state.selected.size}개 다운로드` : '선택 다운로드';
+  elements.download.textContent = state.selected.size
+    ? (downloadMode() === 'zip' ? `${state.selected.size}개 ZIP` : `${state.selected.size}개 다운로드`)
+    : '선택 다운로드';
 }
 
 function render() {
@@ -122,7 +128,8 @@ async function loadImages() {
   elements.summary.textContent = '이미지를 검색하는 중…';
   elements.rescan.disabled = true;
   try {
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const tabId = Number(new URLSearchParams(location.search).get('tabId'));
+    const tab = Number.isInteger(tabId) && tabId > 0 ? await chrome.tabs.get(tabId) : null;
     if (!tab?.id || !/^https?:|^file:/.test(tab.url || '')) throw new Error('일반 웹페이지에서만 사용할 수 있습니다.');
     const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: scanImages });
     state.images = result.map((image, id) => ({
@@ -144,9 +151,7 @@ async function loadImages() {
   }
 }
 
-async function downloadSelected() {
-  const selected = state.images.filter((image) => state.selected.has(image.id));
-  elements.download.disabled = true;
+async function downloadIndividually(selected) {
   let completed = 0;
   let failed = 0;
   for (const [index, image] of selected.entries()) {
@@ -162,6 +167,52 @@ async function downloadSelected() {
     elements.status.textContent = `${completed + failed}/${selected.length} 처리 중…`;
   }
   elements.status.textContent = failed ? `${completed}개 완료, ${failed}개 실패` : `${completed}개 다운로드를 시작했습니다.`;
+}
+
+async function downloadAsZip(selected) {
+  const files = [];
+  let failed = 0;
+  for (const [index, image] of selected.entries()) {
+    elements.status.textContent = `${index + 1}/${selected.length} ZIP 준비 중…`;
+    try {
+      const response = await fetch(image.url, { credentials: 'include', cache: 'force-cache' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      files.push({
+        name: makeDownloadName(image, index, selected.length, elements.baseName.value),
+        data: new Uint8Array(await response.arrayBuffer())
+      });
+    } catch { failed += 1; }
+  }
+  if (!files.length) throw new Error('ZIP에 추가할 이미지를 가져오지 못했습니다.');
+
+  elements.status.textContent = 'ZIP 파일을 생성하는 중…';
+  const blobUrl = URL.createObjectURL(createZip(files));
+  const archiveBase = sanitizeFileName(elements.baseName.value.trim() || 'images').replace(/\.zip$/i, '') || 'images';
+  try {
+    await chrome.downloads.download({
+      url: blobUrl,
+      filename: `${archiveBase}.zip`,
+      conflictAction: 'uniquify',
+      saveAs: false
+    });
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+  }
+  elements.status.textContent = failed
+    ? `ZIP 다운로드 시작 · ${files.length}개 포함, ${failed}개 실패`
+    : `${files.length}개 이미지 ZIP 다운로드를 시작했습니다.`;
+}
+
+async function downloadSelected() {
+  const selected = state.images.filter((image) => state.selected.has(image.id));
+  elements.download.disabled = true;
+  elements.status.textContent = '';
+  try {
+    if (downloadMode() === 'zip') await downloadAsZip(selected);
+    else await downloadIndividually(selected);
+  } catch (error) {
+    elements.status.textContent = error.message;
+  }
   updateSelection();
 }
 
@@ -175,6 +226,10 @@ elements.selectAll.addEventListener('change', () => {
 elements.gridView.addEventListener('click', () => setView('grid'));
 elements.listView.addEventListener('click', () => setView('list'));
 elements.rescan.addEventListener('click', loadImages);
+elements.fullscreen.addEventListener('click', async () => {
+  const current = await chrome.windows.getCurrent();
+  await chrome.windows.update(current.id, { state: current.state === 'fullscreen' ? 'normal' : 'fullscreen' });
+});
 elements.resetFilters.addEventListener('click', () => {
   for (const input of [elements.minWidth, elements.maxWidth, elements.minHeight, elements.maxHeight]) input.value = '';
   state.extensions.clear();
@@ -182,6 +237,7 @@ elements.resetFilters.addEventListener('click', () => {
   render();
 });
 elements.download.addEventListener('click', downloadSelected);
+for (const input of elements.downloadModes) input.addEventListener('change', updateSelection);
 
 function setView(view) {
   state.view = view;

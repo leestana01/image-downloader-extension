@@ -1,10 +1,10 @@
 {
   "name": "page-image-downloader",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
-    "check": "node --check popup.js && node --check scanner.js && node --check core.js"
+    "check": "node --check background.js && node --check popup.js && node --check scanner.js && node --check core.js && node --check zip.js"
   }
 }

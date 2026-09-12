@@ -14,9 +14,14 @@
         </div>
         <div><h1>Image Grabber</h1><p id="summary">이미지를 검색하는 중…</p></div>
       </div>
-      <button id="rescan" class="icon-button" title="다시 검색" aria-label="다시 검색">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg>
-      </button>
+      <div class="window-actions">
+        <button id="fullscreen" class="icon-button" title="전체 화면" aria-label="전체 화면 전환">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+        </button>
+        <button id="rescan" class="icon-button" title="다시 검색" aria-label="다시 검색">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg>
+        </button>
+      </div>
     </header>
 
     <section class="filters" aria-label="이미지 필터">
@@ -53,6 +58,10 @@
 
     <footer class="action-bar">
       <div class="filename-field"><label for="baseName">공통 이름</label><input id="baseName" type="text" placeholder="선택 사항" maxlength="100"></div>
+      <div class="download-mode" role="radiogroup" aria-label="다운로드 방식">
+        <label><input type="radio" name="downloadMode" value="individual" checked><span>개별</span></label>
+        <label><input type="radio" name="downloadMode" value="zip"><span>ZIP</span></label>
+      </div>
       <button id="download" class="primary" disabled>선택 다운로드</button>
       <p id="status" role="status"></p>
     </footer>

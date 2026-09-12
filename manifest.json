@@ -1,11 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Page Image Downloader",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "현재 페이지의 이미지를 검색, 필터링하고 한 번에 다운로드합니다.",
-  "permissions": ["activeTab", "scripting", "downloads"],
+  "permissions": ["activeTab", "scripting", "downloads", "storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "action": {
-    "default_title": "페이지 이미지 다운로드",
-    "default_popup": "popup.html"
+    "default_title": "페이지 이미지 다운로드"
   }
 }

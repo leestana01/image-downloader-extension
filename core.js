@@ -27,7 +27,7 @@ export function sanitizeFileName(value) {
 export function makeDownloadName(image, index, total, baseName) {
   if (!baseName.trim()) return fileNameFromUrl(image.url, index);
   const base = sanitizeFileName(baseName);
-  const suffix = total > 1 ? `-${String(index + 1).padStart(String(total).length, '0')}` : '';
+  const suffix = total > 1 ? `_${String(index + 1).padStart(String(total).length, '0')}` : '';
   return `${base}${suffix}.${image.extension}`;
 }
 

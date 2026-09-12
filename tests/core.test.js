@@ -10,7 +10,7 @@ test('extracts normalized extensions from URLs and data URLs', () => {
 
 test('sanitizes filenames and creates numbered common names', () => {
   assert.equal(sanitizeFileName(' bad:/name?. '), 'bad__name_');
-  assert.equal(makeDownloadName({ url: 'https://x/a.png', extension: 'png' }, 1, 12, '상품 이미지'), '상품 이미지-02.png');
+  assert.equal(makeDownloadName({ url: 'https://x/a.png', extension: 'png' }, 1, 12, '상품 이미지'), '상품 이미지_02.png');
 });
 
 test('applies dimension and extension filters together', () => {
