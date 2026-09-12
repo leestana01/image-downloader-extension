@@ -52,7 +52,14 @@
     </section>
 
     <div class="toolbar">
-      <label class="select-all"><input id="selectAll" type="checkbox"> 전체 선택</label>
+      <div class="toolbar-left">
+        <label class="select-all"><input id="selectAll" type="checkbox"> 전체 선택</label>
+        <label class="collector-control" title="스크롤 중 나타난 이미지를 누적합니다">
+          <input id="collectionMode" type="checkbox">
+          <span class="switch" aria-hidden="true"></span>
+          <span id="collectionStatus">수집 모드</span>
+        </label>
+      </div>
       <div class="view-toggle" role="group" aria-label="보기 방식">
         <button id="gridView" class="active" aria-pressed="true" title="썸네일 보기"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></button>
         <button id="listView" aria-pressed="false" title="목록 보기"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="2.5" width="3" height="3" rx=".6"/><rect x="7" y="3" width="7" height="2" rx="1"/><rect x="2" y="6.5" width="3" height="3" rx=".6"/><rect x="7" y="7" width="7" height="2" rx="1"/><rect x="2" y="10.5" width="3" height="3" rx=".6"/><rect x="7" y="11" width="7" height="2" rx="1"/></svg></button>

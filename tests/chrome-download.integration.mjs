@@ -54,7 +54,7 @@ function createFixtureServer() {
       response.end('<!doctype html><img src="/original-a.svg"><img src="/original-b.svg">');
       return;
     }
-    const match = request.url?.match(/^\/original-([ab])\.svg$/);
+    const match = request.url?.match(/^\/original-([abcd])\.svg$/);
     if (match) {
       response.writeHead(200, {
         'Content-Type': 'image/svg+xml',
@@ -99,7 +99,8 @@ try {
   assert.ok(extensionId);
 
   const galleryUrl = `http://127.0.0.1:${serverPort}/gallery.html`;
-  await fetch(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(galleryUrl)}`, { method: 'PUT' });
+  const galleryTarget = await (await fetch(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(galleryUrl)}`, { method: 'PUT' })).json();
+  const galleryCdp = await connectCdp(galleryTarget.webSocketDebuggerUrl);
   const workerCdp = await connectCdp(worker.webSocketDebuggerUrl);
   const tabResult = await poll(async () => {
     const result = await workerCdp.send('Runtime.evaluate', {
@@ -131,10 +132,33 @@ try {
     return names.length === 2 ? names : null;
   }, 'Two downloads did not complete');
   assert.deepEqual(downloaded, ['product_01.svg', 'product_02.svg']);
+
+  await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("collectionMode").click()' });
+  await poll(async () => {
+    const result = await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("collectionStatus").textContent', returnByValue: true });
+    return result.result.value === '수집 중 · 2';
+  }, 'Collection mode did not start');
+  await galleryCdp.send('Runtime.evaluate', { expression: 'document.body.innerHTML = `<img src="/original-c.svg">`' });
+  await poll(async () => {
+    const result = await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("summary").textContent', returnByValue: true });
+    return result.result.value === '전체 3개 · 표시 3개';
+  }, 'Removed virtual-scroll images were not retained');
+
+  await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("collectionMode").click()' });
+  await poll(async () => {
+    const result = await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("collectionStatus").textContent', returnByValue: true });
+    return result.result.value === '수집됨 · 3';
+  }, 'Collection mode did not stop');
+  await galleryCdp.send('Runtime.evaluate', { expression: 'document.body.innerHTML = `<img src="/original-d.svg">`' });
+  await wait(1_000);
+  const stoppedSummary = await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("summary").textContent', returnByValue: true });
+  assert.equal(stoppedSummary.result.value, '전체 3개 · 표시 3개');
+
+  galleryCdp.close();
   popupCdp.close();
   workerCdp.close();
   browserCdp.close();
-  console.log(`Chromium downloads: ${downloaded.join(', ')}`);
+  console.log(`Chromium downloads: ${downloaded.join(', ')}; collector retained 3 and ignored changes after stop`);
 } finally {
   chromium.kill('SIGTERM');
   server.close();

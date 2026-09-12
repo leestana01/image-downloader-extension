@@ -77,8 +77,17 @@ p { margin: 0; }
   flex: 0 0 auto; min-height: 46px; padding: 0 24px;
   display: flex; align-items: center; justify-content: space-between;
 }
+.toolbar-left { display: flex; align-items: center; gap: 18px; }
 .select-all { display: flex; align-items: center; gap: 8px; color: #4f535b; font-size: 11px; cursor: pointer; }
 input[type="checkbox"] { accent-color: var(--accent); }
+.collector-control { display: flex; align-items: center; gap: 7px; color: #70747d; font-size: 10px; cursor: pointer; user-select: none; }
+.collector-control > input { position: absolute; opacity: 0; pointer-events: none; }
+.switch { position: relative; width: 26px; height: 15px; border-radius: 999px; background: #d8dade; transition: background .16s; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 18%); transition: transform .16s; }
+.collector-control > input:checked + .switch { background: var(--accent); }
+.collector-control > input:checked + .switch::after { transform: translateX(11px); }
+.collector-control > input:focus-visible + .switch { outline: 2px solid color-mix(in srgb, var(--accent) 50%, transparent); outline-offset: 2px; }
+.collector-control.collecting { color: var(--accent); }
 .view-toggle { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: var(--surface); }
 .view-toggle button {
   width: 30px; height: 26px; display: grid; place-items: center;

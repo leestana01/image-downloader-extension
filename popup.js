@@ -4,7 +4,10 @@ import { scanImages } from './scanner.js';
 import { createZip } from './zip.js';
 
 const params = new URLSearchParams(location.search);
-const state = { images: [], selected: new Set(), extensions: new Set(), view: 'grid', sourceTabId: null };
+const state = {
+  images: [], selected: new Set(), extensions: new Set(), view: 'grid',
+  sourceTabId: null, nextImageId: 0, collectedCount: 0
+};
 if (params.has('surface')) document.body.classList.add('standalone');
 const $ = (id) => document.getElementById(id);
 const elements = {
@@ -13,6 +16,7 @@ const elements = {
   minWidth: $('minWidth'), maxWidth: $('maxWidth'), minHeight: $('minHeight'), maxHeight: $('maxHeight'),
   gridView: $('gridView'), listView: $('listView'), rescan: $('rescan'), resetFilters: $('resetFilters'),
   openWindow: $('openWindow'), openTab: $('openTab'), openFullscreen: $('openFullscreen'),
+  collectionMode: $('collectionMode'), collectionStatus: $('collectionStatus'),
   downloadModes: [...document.querySelectorAll('input[name="downloadMode"]')]
 };
 
@@ -29,6 +33,65 @@ function filters() {
 function filteredImages() { return state.images.filter((image) => matchesFilters(image, filters())); }
 
 function downloadMode() { return elements.downloadModes.find((input) => input.checked)?.value || 'individual'; }
+
+function normalizeImage(image) {
+  const id = state.nextImageId;
+  state.nextImageId += 1;
+  return {
+    ...image,
+    id,
+    extension: extensionFromUrl(image.url),
+    name: (() => {
+      try {
+        const url = new URL(image.url);
+        if (!['http:', 'https:', 'file:'].includes(url.protocol)) return `image-${id + 1}`;
+        return decodeURIComponent(url.pathname.split('/').pop()) || `image-${id + 1}`;
+      } catch { return `image-${id + 1}`; }
+    })()
+  };
+}
+
+function mergeImages(images) {
+  const byUrl = new Map(state.images.map((image) => [image.url, image]));
+  let changed = false;
+  for (const image of images) {
+    const current = byUrl.get(image.url);
+    if (!current) {
+      const normalized = normalizeImage(image);
+      state.images.push(normalized);
+      byUrl.set(normalized.url, normalized);
+      changed = true;
+    } else if ((image.width || 0) * (image.height || 0) > current.width * current.height) {
+      current.width = image.width;
+      current.height = image.height;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+async function collectorMessage(action) {
+  return chrome.tabs.sendMessage(state.sourceTabId, { action });
+}
+
+function updateCollectorControl(snapshot) {
+  elements.collectionMode.checked = snapshot.active;
+  state.collectedCount = snapshot.images.length;
+  elements.collectionStatus.textContent = snapshot.active
+    ? `수집 중 · ${snapshot.images.length}`
+    : (snapshot.images.length ? `수집됨 · ${snapshot.images.length}` : '수집 모드');
+  elements.collectionMode.closest('.collector-control').classList.toggle('collecting', snapshot.active);
+}
+
+async function refreshCollector() {
+  if (!state.sourceTabId) return;
+  const snapshot = await collectorMessage('collector:status');
+  updateCollectorControl(snapshot);
+  if (mergeImages(snapshot.images)) {
+    renderExtensions();
+    render();
+  }
+}
 
 function downloadFromPage({ url, filename }) {
   const anchor = document.createElement('a');
@@ -55,6 +118,7 @@ function renderExtensions() {
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.value = type;
+    input.checked = state.extensions.has(type);
     input.addEventListener('change', () => {
       input.checked ? state.extensions.add(type) : state.extensions.delete(type);
       render();
@@ -148,15 +212,18 @@ async function loadImages() {
       : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
     if (!tab?.id || !/^https?:|^file:/.test(tab.url || '')) throw new Error('일반 웹페이지에서만 사용할 수 있습니다.');
     state.sourceTabId = tab.id;
-    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: scanImages });
-    state.images = result.map((image, id) => ({
-      ...image, id, extension: extensionFromUrl(image.url), name: (() => {
-        try { return decodeURIComponent(new URL(image.url).pathname.split('/').pop()) || `image-${id + 1}`; }
-        catch { return `image-${id + 1}`; }
-      })()
-    }));
+    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['collector.js'] });
+    const [[{ result }], collector] = await Promise.all([
+      chrome.scripting.executeScript({ target: { tabId: tab.id }, func: scanImages }),
+      collectorMessage('collector:status')
+    ]);
+    state.images = [];
+    state.nextImageId = 0;
     state.selected.clear();
     state.extensions.clear();
+    mergeImages(result);
+    mergeImages(collector.images);
+    updateCollectorControl(collector);
     renderExtensions();
     render();
   } catch (error) {
@@ -228,6 +295,22 @@ elements.selectAll.addEventListener('change', () => {
 elements.gridView.addEventListener('click', () => setView('grid'));
 elements.listView.addEventListener('click', () => setView('list'));
 elements.rescan.addEventListener('click', loadImages);
+elements.collectionMode.addEventListener('change', async () => {
+  elements.collectionMode.disabled = true;
+  try {
+    const snapshot = await collectorMessage(elements.collectionMode.checked ? 'collector:start' : 'collector:stop');
+    updateCollectorControl(snapshot);
+    if (mergeImages(snapshot.images)) {
+      renderExtensions();
+      render();
+    }
+  } catch (error) {
+    elements.collectionMode.checked = !elements.collectionMode.checked;
+    elements.status.textContent = `수집 모드: ${error.message}`;
+  } finally {
+    elements.collectionMode.disabled = false;
+  }
+});
 async function openSurface(surface) {
   if (!state.sourceTabId) return;
   const response = await chrome.runtime.sendMessage({ action: 'openSurface', surface, sourceTabId: state.sourceTabId });
@@ -256,3 +339,6 @@ function setView(view) {
 }
 
 loadImages();
+setInterval(() => {
+  if (elements.collectionMode.checked) refreshCollector().catch(() => {});
+}, 800);
