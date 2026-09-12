@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>페이지 이미지 다운로드</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>Page Images</h1>
+        <p id="summary">이미지를 검색하는 중…</p>
+      </div>
+      <button id="rescan" class="icon-button" title="다시 검색" aria-label="다시 검색">↻</button>
+    </header>
+
+    <section class="filters" aria-label="이미지 필터">
+      <div class="range-row">
+        <span>가로</span>
+        <input id="minWidth" type="number" min="0" placeholder="최소" aria-label="최소 가로 길이">
+        <span>–</span>
+        <input id="maxWidth" type="number" min="0" placeholder="최대" aria-label="최대 가로 길이">
+        <span>px</span>
+      </div>
+      <div class="range-row">
+        <span>세로</span>
+        <input id="minHeight" type="number" min="0" placeholder="최소" aria-label="최소 세로 길이">
+        <span>–</span>
+        <input id="maxHeight" type="number" min="0" placeholder="최대" aria-label="최대 세로 길이">
+        <span>px</span>
+      </div>
+      <div id="extensions" class="extensions" aria-label="확장자 필터"></div>
+    </section>
+
+    <div class="toolbar">
+      <label class="select-all"><input id="selectAll" type="checkbox"> 전체 선택</label>
+      <div class="view-toggle" role="group" aria-label="보기 방식">
+        <button id="gridView" class="active" aria-pressed="true" title="썸네일 보기">▦</button>
+        <button id="listView" aria-pressed="false" title="목록 보기">☷</button>
+      </div>
+    </div>
+
+    <main id="results" class="results grid" aria-live="polite"></main>
+    <div id="empty" class="empty" hidden>조건에 맞는 이미지가 없습니다.</div>
+
+    <footer>
+      <label for="baseName">공통 파일명</label>
+      <input id="baseName" type="text" placeholder="예: product (선택 사항)" maxlength="100">
+      <button id="download" class="primary" disabled>선택 다운로드</button>
+      <p id="status" role="status"></p>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
