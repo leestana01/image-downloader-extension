@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -8,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 
 const extensionDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const extensionId = [...createHash('sha256').update(extensionDir).digest('hex').slice(0, 32)]
+  .map((digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)))
+  .join('');
 
 async function poll(operation, message, attempts = 50) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
@@ -89,14 +93,16 @@ try {
   const browserCdp = await connectCdp(version.webSocketDebuggerUrl);
   await browserCdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloadDir, eventsEnabled: true });
 
+  const warmupUrl = `chrome-extension://${extensionId}/popup.html?surface=tab`;
+  await fetch(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(warmupUrl)}`, { method: 'PUT' });
+
   const targets = await poll(async () => {
     const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
     const list = await response.json();
     return list.some((target) => target.type === 'service_worker') ? list : null;
   }, 'Extension service worker did not load');
   const worker = targets.find((target) => target.type === 'service_worker');
-  const extensionId = worker.url.match(/^chrome-extension:\/\/([^/]+)/)?.[1];
-  assert.ok(extensionId);
+  assert.ok(worker.url.includes(extensionId));
 
   const galleryUrl = `http://127.0.0.1:${serverPort}/gallery.html`;
   const galleryTarget = await (await fetch(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(galleryUrl)}`, { method: 'PUT' })).json();
@@ -172,15 +178,19 @@ try {
   browserCdp.close();
   console.log(`Chromium downloads: ${downloadsWithZip.join(', ')}; collector retained 3 and ignored changes after stop`);
 } finally {
+  const exitAfterTerm = chromium.exitCode === null
+    ? new Promise((resolve) => chromium.once('exit', resolve))
+    : Promise.resolve();
   chromium.kill('SIGTERM');
   server.close();
   await Promise.race([
-    chromium.exitCode === null ? new Promise((resolve) => chromium.once('exit', resolve)) : Promise.resolve(),
+    exitAfterTerm,
     wait(1_000)
   ]);
   if (chromium.exitCode === null) {
+    const exitAfterKill = new Promise((resolve) => chromium.once('exit', resolve));
     chromium.kill('SIGKILL');
-    await new Promise((resolve) => chromium.once('exit', resolve));
+    await exitAfterKill;
   }
   await rm(profileDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   await rm(downloadDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
