@@ -1,4 +1,4 @@
-import { createDownloadPlan, extensionFromUrl, matchesFilters, sanitizeFileName } from './core.js';
+import { createDownloadPlan, extensionFromUrl, makeArchiveName, matchesFilters } from './core.js';
 import { fetchZipEntries, startIndividualDownloads } from './downloads.js';
 import { scanImages } from './scanner.js';
 import { createZip } from './zip.js';
@@ -255,14 +255,8 @@ async function downloadAsZip(plan) {
 
   elements.status.textContent = 'ZIP 파일을 생성하는 중…';
   const blobUrl = URL.createObjectURL(createZip(files));
-  const archiveBase = sanitizeFileName(elements.baseName.value.trim() || 'images').replace(/\.zip$/i, '') || 'images';
   try {
-    await chrome.downloads.download({
-      url: blobUrl,
-      filename: `${archiveBase}.zip`,
-      conflictAction: 'uniquify',
-      saveAs: false
-    });
+    downloadFromPage({ url: blobUrl, filename: makeArchiveName(elements.baseName.value) });
   } finally {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDownloadPlan, extensionFromUrl, makeDownloadName, matchesFilters, sanitizeFileName } from '../core.js';
+import { createDownloadPlan, extensionFromUrl, makeArchiveName, makeDownloadName, matchesFilters, sanitizeFileName } from '../core.js';
 
 test('extracts normalized extensions from URLs and data URLs', () => {
   assert.equal(extensionFromUrl('https://example.com/photo.JPEG?size=2'), 'jpg');
@@ -23,6 +23,12 @@ test('creates one shared filename plan for all download modes', () => {
     { image: images[0], url: images[0].url, filename: '여행_01.jpg' },
     { image: images[1], url: images[1].url, filename: '여행_02.png' }
   ]);
+});
+
+test('uses the common name for the ZIP archive', () => {
+  assert.equal(makeArchiveName(' product '), 'product.zip');
+  assert.equal(makeArchiveName('product.zip'), 'product.zip');
+  assert.equal(makeArchiveName(''), 'images.zip');
 });
 
 test('applies dimension and extension filters together', () => {

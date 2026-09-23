@@ -39,6 +39,11 @@ export function createDownloadPlan(images, baseName) {
   }));
 }
 
+export function makeArchiveName(baseName) {
+  const base = sanitizeFileName(baseName.trim() || 'images').replace(/\.zip$/i, '') || 'images';
+  return `${base}.zip`;
+}
+
 export function matchesFilters(image, filters) {
   const { minWidth, maxWidth, minHeight, maxHeight, extensions } = filters;
   return (!minWidth || image.width >= minWidth)

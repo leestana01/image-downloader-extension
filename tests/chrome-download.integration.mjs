@@ -133,6 +133,18 @@ try {
   }, 'Two downloads did not complete');
   assert.deepEqual(downloaded, ['product_01.svg', 'product_02.svg']);
 
+  await popupCdp.send('Runtime.evaluate', {
+    expression: `(() => {
+      document.querySelector('input[name="downloadMode"][value="zip"]').click();
+      document.getElementById('download').click();
+    })()`
+  });
+  const downloadsWithZip = await poll(async () => {
+    const names = (await readdir(downloadDir)).filter((name) => !name.endsWith('.crdownload')).sort();
+    return names.includes('product.zip') ? names : null;
+  }, 'ZIP did not use the common archive name');
+  assert.deepEqual(downloadsWithZip, ['product.zip', 'product_01.svg', 'product_02.svg']);
+
   await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("collectionMode").click()' });
   await poll(async () => {
     const result = await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("collectionStatus").textContent', returnByValue: true });
@@ -158,7 +170,7 @@ try {
   popupCdp.close();
   workerCdp.close();
   browserCdp.close();
-  console.log(`Chromium downloads: ${downloaded.join(', ')}; collector retained 3 and ignored changes after stop`);
+  console.log(`Chromium downloads: ${downloadsWithZip.join(', ')}; collector retained 3 and ignored changes after stop`);
 } finally {
   chromium.kill('SIGTERM');
   server.close();
