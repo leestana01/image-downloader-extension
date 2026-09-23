@@ -1,0 +1,135 @@
+name: Publish to Chrome Web Store
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (for example, v1.5.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chrome-web-store-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: vars.CHROME_WEB_STORE_AUTO_PUBLISH == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+      PUBLISHER_ID: ${{ vars.CHROME_WEB_STORE_PUBLISHER_ID }}
+      EXTENSION_ID: ${{ vars.CHROME_WEB_STORE_EXTENSION_ID }}
+    steps:
+      - name: Validate repository configuration
+        env:
+          SERVICE_ACCOUNT_JSON: ${{ secrets.CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -euo pipefail
+          test -n "${PUBLISHER_ID}" || { echo "Missing CHROME_WEB_STORE_PUBLISHER_ID variable" >&2; exit 1; }
+          test -n "${EXTENSION_ID}" || { echo "Missing CHROME_WEB_STORE_EXTENSION_ID variable" >&2; exit 1; }
+          test -n "${SERVICE_ACCOUNT_JSON}" || { echo "Missing CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON secret" >&2; exit 1; }
+
+      - name: Check out release tag
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Verify version, tests, and syntax
+        run: |
+          set -euo pipefail
+          expected_version="${RELEASE_TAG#v}"
+          manifest_version="$(node -p "JSON.parse(require('fs').readFileSync('manifest.json', 'utf8')).version")"
+          package_version="$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version")"
+          test "${manifest_version}" = "${expected_version}" || { echo "manifest.json version ${manifest_version} does not match ${RELEASE_TAG}" >&2; exit 1; }
+          test "${package_version}" = "${expected_version}" || { echo "package.json version ${package_version} does not match ${RELEASE_TAG}" >&2; exit 1; }
+          npm test
+          npm run check
+
+      - name: Package extension
+        id: package
+        run: |
+          set -euo pipefail
+          archive="${RUNNER_TEMP}/page-image-downloader-${RELEASE_TAG}.zip"
+          zip -q -X "${archive}" \
+            manifest.json \
+            background.js \
+            collector.js \
+            core.js \
+            downloads.js \
+            popup.css \
+            popup.html \
+            popup.js \
+            scanner.js \
+            zip.js
+          unzip -t "${archive}"
+          echo "archive=${archive}" >> "${GITHUB_OUTPUT}"
+
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          credentials_json: ${{ secrets.CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON }}
+          token_format: access_token
+          access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+
+      - name: Upload package to Chrome Web Store
+        id: upload
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+        run: |
+          set -euo pipefail
+          response="${RUNNER_TEMP}/upload-response.json"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+            --upload-file "${ARCHIVE}" \
+            --output "${response}" \
+            "https://chromewebstore.googleapis.com/upload/v2/publishers/${PUBLISHER_ID}/items/${EXTENSION_ID}:upload"
+
+          state="$(jq -r '.uploadState // empty' "${response}")"
+          if [ "${state}" = "IN_PROGRESS" ]; then
+            for attempt in $(seq 1 30); do
+              sleep 10
+              curl --fail-with-body --silent --show-error \
+                --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+                --output "${response}" \
+                "https://chromewebstore.googleapis.com/v2/publishers/${PUBLISHER_ID}/items/${EXTENSION_ID}:fetchStatus"
+              state="$(jq -r '.lastAsyncUploadState // empty' "${response}")"
+              [ "${state}" = "IN_PROGRESS" ] || break
+              echo "Upload is still processing (${attempt}/30)"
+            done
+          fi
+
+          if [ "${state}" != "SUCCEEDED" ]; then
+            echo "Chrome Web Store upload failed or timed out: ${state:-unknown}" >&2
+            jq . "${response}" >&2
+            exit 1
+          fi
+
+      - name: Submit update for review and publication
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: |
+          set -euo pipefail
+          response="${RUNNER_TEMP}/publish-response.json"
+          curl --fail-with-body --silent --show-error \
+            --request POST \
+            --header "Authorization: Bearer ${ACCESS_TOKEN}" \
+            --header "Content-Type: application/json" \
+            --data '{"publishType":"DEFAULT_PUBLISH","blockOnWarnings":true}' \
+            --output "${response}" \
+            "https://chromewebstore.googleapis.com/v2/publishers/${PUBLISHER_ID}/items/${EXTENSION_ID}:publish"
+          jq . "${response}"
