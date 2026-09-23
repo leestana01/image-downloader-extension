@@ -6,8 +6,6 @@
   "scripts": {
     "test": "node --test",
     "test:chrome": "node tests/chrome-download.integration.mjs",
-    "test:chrome:remote": "TEST_REMOTE_UI=1 node tests/chrome-download.integration.mjs",
-    "test:chrome:fallback": "TEST_FALLBACK_UI=1 node tests/chrome-download.integration.mjs",
     "check": "node --check background.js && node --check collector.js && node --check popup-shell.js && node --check app-runtime.js && node --check host-api.js && node --check popup.js && node --check downloads.js && node --check scanner.js && node --check core.js && node --check zip.js"
   }
 }

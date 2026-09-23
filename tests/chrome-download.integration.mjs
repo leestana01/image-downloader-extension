@@ -8,8 +8,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const extensionDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const useRemoteUi = process.env.TEST_REMOTE_UI === '1';
-const useFallbackUi = process.env.TEST_FALLBACK_UI === '1';
 const wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 const extensionId = [...createHash('sha256').update(extensionDir).digest('hex').slice(0, 32)]
   .map((digit) => String.fromCharCode(97 + Number.parseInt(digit, 16)))
@@ -80,14 +78,12 @@ const serverPort = server.address().port;
 const profileDir = await mkdtemp(path.join(os.tmpdir(), 'image-grabber-profile-'));
 const downloadDir = await mkdtemp(path.join(os.tmpdir(), 'image-grabber-downloads-'));
 const debugPort = 19226;
-const chromiumArgs = [
+const chromium = spawn('chromium-browser', [
   '--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage',
   '--disable-background-networking', '--no-first-run', '--remote-allow-origins=*',
   `--disable-extensions-except=${extensionDir}`, `--load-extension=${extensionDir}`,
   `--user-data-dir=${profileDir}`, `--remote-debugging-port=${debugPort}`, 'about:blank'
-];
-if (useFallbackUi) chromiumArgs.unshift('--host-resolver-rules=MAP leestana01.github.io ~NOTFOUND');
-const chromium = spawn('chromium-browser', chromiumArgs, { stdio: 'ignore' });
+], { stdio: 'ignore' });
 
 try {
   const version = await poll(async () => {
@@ -102,26 +98,9 @@ try {
   const galleryUrl = `http://127.0.0.1:${serverPort}/gallery.html`;
   const galleryTarget = await (await fetch(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(galleryUrl)}`, { method: 'PUT' })).json();
   const galleryCdp = await connectCdp(galleryTarget.webSocketDebuggerUrl);
-  const popupPage = useRemoteUi || useFallbackUi ? 'popup.html' : 'app.html';
-  const popupUrl = `chrome-extension://${extensionId}/${popupPage}?surface=tab`;
+  const popupUrl = `chrome-extension://${extensionId}/app.html?surface=tab`;
   const popupTarget = await (await fetch(`http://127.0.0.1:${debugPort}/json/new?${encodeURIComponent(popupUrl)}`, { method: 'PUT' })).json();
-  const uiTarget = useRemoteUi
-    ? await poll(async () => {
-      const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
-      const targets = await response.json();
-      return targets.find((target) => target.type === 'iframe'
-        && target.parentId === popupTarget.id
-        && target.url.startsWith('https://leestana01.github.io/image-downloader-extension/app.html'));
-    }, 'Remote UI iframe did not load', 150)
-    : useFallbackUi
-      ? await poll(async () => {
-        const response = await fetch(`http://127.0.0.1:${debugPort}/json/list`);
-        const targets = await response.json();
-        return targets.find((target) => target.id === popupTarget.id
-          && target.url.startsWith(`chrome-extension://${extensionId}/app.html`));
-      }, 'Local UI fallback did not activate', 150)
-      : popupTarget;
-  const popupCdp = await connectCdp(uiTarget.webSocketDebuggerUrl);
+  const popupCdp = await connectCdp(popupTarget.webSocketDebuggerUrl);
   await popupCdp.send('Runtime.enable');
   await poll(async () => {
     const result = await popupCdp.send('Runtime.evaluate', { expression: 'document.getElementById("summary")?.textContent', returnByValue: true });
@@ -177,8 +156,7 @@ try {
   galleryCdp.close();
   popupCdp.close();
   browserCdp.close();
-  const uiMode = useRemoteUi ? 'remote' : useFallbackUi ? 'fallback' : 'local';
-  console.log(`Chromium ${uiMode} UI downloads: ${downloadsWithZip.join(', ')}; collector retained 3 and ignored changes after stop`);
+  console.log(`Chromium downloads: ${downloadsWithZip.join(', ')}; collector retained 3 and ignored changes after stop`);
 } finally {
   const exitAfterTerm = chromium.exitCode === null
     ? new Promise((resolve) => chromium.once('exit', resolve))
