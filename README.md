@@ -12,7 +12,6 @@
 - 확장자 복수 선택 필터
 - 전체 선택 및 개별/ZIP 다중 다운로드
 - `공통이름_순서.확장자` 규칙의 파일명 생성
-- GitHub `main`의 최신 원격 UI 자동 사용 및 로컬 UI fallback
 
 ## 설치
 
@@ -21,32 +20,22 @@
 3. **개발자 모드**를 켭니다.
 4. **압축해제된 확장 프로그램을 로드합니다**를 눌러 압축을 푼 폴더를 선택합니다.
 
-설치 후에는 GitHub Pages에 정상 연결되는 경우 `main`에 배포된 최신 UI와 일반 로직을 자동 사용합니다. 별도의 ZIP 교체나 압축 해제는 필요하지 않습니다. GitHub Pages 연결이 실패하거나 설치된 권한 브리지보다 새 UI가 높은 버전을 요구하면 ZIP에 포함된 UI로 자동 전환됩니다.
+이 방식으로 설치한 확장프로그램은 Chrome 보안 정책상 GitHub에서 자동 업데이트할 수 없습니다. 일반 사용자의 자동 업데이트는 Chrome Web Store 설치본에서 지원됩니다.
 
-## GitHub 기반 자동 갱신
+## 자동 업데이트 배포
 
-`main`에 푸시하면 `.github/workflows/deploy-remote-ui.yml`이 테스트와 구문 검사를 실행한 뒤 아래 프론트엔드 파일을 GitHub Pages에 배포합니다.
+GitHub Release를 게시하면 `.github/workflows/chrome-web-store-publish.yml`이 해당 태그의 소스를 검증·패키징하고 Chrome Web Store에 업데이트를 제출합니다. Chrome Web Store 심사를 통과하면 설치된 확장프로그램은 Chrome의 기본 업데이트 주기에 따라 자동 갱신됩니다.
 
-- `app.html`
-- `popup.css`
-- `popup.js`
-- `app-runtime.js`
-- `core.js`
+워크플로를 사용하려면 저장소에 다음 값을 설정합니다.
 
-확장프로그램을 열 때마다 `https://leestana01.github.io/image-downloader-extension/`의 최신 UI를 확인합니다. 원격 페이지는 Chrome 권한을 직접 갖지 않으며, 설치본의 제한된 메시지 브리지를 통해 이미지 검색·수집·다운로드를 요청합니다. 브리지는 정확한 Pages origin, 현재 실행용 임시 토큰, 허용된 메서드를 모두 검증합니다.
+- Repository variable `CHROME_WEB_STORE_PUBLISHER_ID`: Chrome Web Store Publisher ID
+- Repository variable `CHROME_WEB_STORE_EXTENSION_ID`: Chrome Web Store 확장프로그램 ID
+- Repository secret `CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON`: Developer Dashboard에 등록한 Google Cloud 서비스 계정 JSON 키 전체
+- Repository variable `CHROME_WEB_STORE_AUTO_PUBLISH`: 준비가 끝난 뒤 `true`로 설정
 
-다음 변경은 `main` 푸시만으로 반영됩니다.
+Google Cloud 프로젝트에서 Chrome Web Store API를 활성화하고, 서비스 계정 이메일을 Chrome Web Store Developer Dashboard의 Account 설정에 추가해야 합니다. 최초 스토어 등록에는 스토어 설명과 개인정보 항목을 Dashboard에서 작성해야 합니다.
 
-- UI, 필터, 파일명 및 다운로드 흐름
-- 설치된 브리지가 이미 제공하는 기능을 조합한 동작
-
-다음 변경은 Chrome 보안 모델상 새 ZIP 설치가 필요합니다.
-
-- Manifest 권한 추가
-- 서비스 워커·콘텐츠 수집기 변경
-- 브리지에 새로운 권한 메서드 추가
-
-원격 UI가 `requiredBridgeVersion`으로 더 높은 브리지 버전을 요구하면 기존 설치본은 원격 UI를 실행하지 않고 현재 로컬 기능을 유지합니다. 원격 JavaScript를 확장프로그램 권한 컨텍스트에서 직접 실행하지 않습니다.
+자동 게시가 비활성화되거나 업로드·심사에 실패해도 이미 설치된 버전은 교체되지 않으므로 현재 기능이 그대로 유지됩니다.
 
 ## 사용
 
@@ -68,7 +57,6 @@
 - 로그인·Referer·쿠키 정책으로 직접 접근이 차단된 일부 이미지는 다운로드가 실패할 수 있습니다.
 - 개별 다운로드도 이미지 데이터를 먼저 가져온 뒤 지정 파일명으로 저장하므로 서버의 원본 파일명 헤더에 덮어쓰이지 않습니다.
 - ZIP 생성은 선택한 이미지를 메모리에 모아서 처리하므로 대용량 이미지를 많이 선택하면 시간이 걸릴 수 있습니다.
-- 원격 UI는 설치된 브리지가 제공하는 권한 범위 안에서만 갱신됩니다. 새로운 Chrome 권한이나 콘텐츠 스크립트 동작은 ZIP 버전 갱신이 필요합니다.
 
 ## 개발
 

@@ -1,11 +1,11 @@
 {
   "name": "page-image-downloader",
-  "version": "1.5.0",
+  "version": "1.4.1",
   "private": true,
   "type": "module",
   "scripts": {
     "test": "node --test",
     "test:chrome": "node tests/chrome-download.integration.mjs",
-    "check": "node --check background.js && node --check collector.js && node --check popup-shell.js && node --check app-runtime.js && node --check host-api.js && node --check popup.js && node --check downloads.js && node --check scanner.js && node --check core.js && node --check zip.js"
+    "check": "node --check background.js && node --check collector.js && node --check popup.js && node --check downloads.js && node --check scanner.js && node --check core.js && node --check zip.js"
   }
 }
