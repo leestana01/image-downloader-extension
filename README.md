@@ -20,23 +20,6 @@
 3. **개발자 모드**를 켭니다.
 4. **압축해제된 확장 프로그램을 로드합니다**를 눌러 압축을 푼 폴더를 선택합니다.
 
-이 방식으로 설치한 확장프로그램은 Chrome 보안 정책상 GitHub에서 자동 업데이트할 수 없습니다. 일반 사용자의 자동 업데이트는 Chrome Web Store 설치본에서 지원됩니다.
-
-## 자동 업데이트 배포
-
-GitHub Release를 게시하면 `.github/workflows/chrome-web-store-publish.yml`이 해당 태그의 소스를 검증·패키징하고 Chrome Web Store에 업데이트를 제출합니다. Chrome Web Store 심사를 통과하면 설치된 확장프로그램은 Chrome의 기본 업데이트 주기에 따라 자동 갱신됩니다.
-
-워크플로를 사용하려면 저장소에 다음 값을 설정합니다.
-
-- Repository variable `CHROME_WEB_STORE_PUBLISHER_ID`: Chrome Web Store Publisher ID
-- Repository variable `CHROME_WEB_STORE_EXTENSION_ID`: Chrome Web Store 확장프로그램 ID
-- Repository secret `CHROME_WEB_STORE_SERVICE_ACCOUNT_JSON`: Developer Dashboard에 등록한 Google Cloud 서비스 계정 JSON 키 전체
-- Repository variable `CHROME_WEB_STORE_AUTO_PUBLISH`: 준비가 끝난 뒤 `true`로 설정
-
-Google Cloud 프로젝트에서 Chrome Web Store API를 활성화하고, 서비스 계정 이메일을 Chrome Web Store Developer Dashboard의 Account 설정에 추가해야 합니다. 최초 스토어 등록에는 스토어 설명과 개인정보 항목을 Dashboard에서 작성해야 합니다.
-
-자동 게시가 비활성화되거나 업로드·심사에 실패해도 이미 설치된 버전은 교체되지 않으므로 현재 기능이 그대로 유지됩니다.
-
 ## 사용
 
 1. 이미지를 받을 웹페이지를 엽니다.
