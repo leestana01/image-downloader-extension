@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>페이지 이미지 다운로드</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m7 16 3.2-3.2 2.6 2.6 1.7-1.7L18 17"/><circle cx="15.8" cy="8.2" r="1.3"/></svg>
+        </div>
+        <div><h1>Image Grabber</h1><p id="summary">이미지를 검색하는 중…</p></div>
+      </div>
+      <div class="window-actions">
+        <button id="openWindow" class="icon-button" title="크기 조절 창으로 열기" aria-label="별도 창으로 열기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 9h16"/></svg></button>
+        <button id="openTab" class="icon-button" title="새 탭으로 열기" aria-label="새 탭으로 열기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 4h6v6M20 4l-9 9"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg></button>
+        <button id="openFullscreen" class="icon-button" title="전체 화면으로 열기" aria-label="전체 화면으로 열기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg></button>
+        <button id="rescan" class="icon-button" title="다시 검색" aria-label="다시 검색"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg></button>
+      </div>
+    </header>
+    <section class="filters" aria-label="이미지 필터">
+      <div class="filter-heading"><span class="section-label">필터</span><button id="resetFilters" class="text-button" type="button">모두 지우기</button></div>
+      <div class="filter-controls">
+        <div class="range-row"><label for="minWidth">가로</label><input id="minWidth" type="number" min="0" placeholder="최소" aria-label="최소 가로 길이"><span>—</span><input id="maxWidth" type="number" min="0" placeholder="최대" aria-label="최대 가로 길이"><span class="unit">px</span></div>
+        <div class="range-row"><label for="minHeight">세로</label><input id="minHeight" type="number" min="0" placeholder="최소" aria-label="최소 세로 길이"><span>—</span><input id="maxHeight" type="number" min="0" placeholder="최대" aria-label="최대 세로 길이"><span class="unit">px</span></div>
+      </div>
+      <div id="extensions" class="extensions" aria-label="확장자 필터"></div>
+    </section>
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <label class="select-all"><input id="selectAll" type="checkbox"> 전체 선택</label>
+        <label class="collector-control" title="스크롤 중 나타난 이미지를 누적합니다"><input id="collectionMode" type="checkbox"><span class="switch" aria-hidden="true"></span><span id="collectionStatus">수집 모드</span></label>
+      </div>
+      <div class="view-toggle" role="group" aria-label="보기 방식">
+        <button id="gridView" class="active" aria-pressed="true" title="썸네일 보기"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></button>
+        <button id="listView" aria-pressed="false" title="목록 보기"><svg viewBox="0 0 16 16" fill="currentColor"><rect x="2" y="2.5" width="3" height="3" rx=".6"/><rect x="7" y="3" width="7" height="2" rx="1"/><rect x="2" y="6.5" width="3" height="3" rx=".6"/><rect x="7" y="7" width="7" height="2" rx="1"/><rect x="2" y="10.5" width="3" height="3" rx=".6"/><rect x="7" y="11" width="7" height="2" rx="1"/></svg></button>
+      </div>
+    </div>
+    <main id="results" class="results grid" aria-live="polite"></main>
+    <div id="empty" class="empty" hidden>조건에 맞는 이미지가 없습니다.</div>
+    <footer class="action-bar">
+      <div class="filename-field"><label for="baseName">공통 이름</label><input id="baseName" type="text" placeholder="선택 사항" maxlength="100"></div>
+      <div class="download-mode" role="radiogroup" aria-label="다운로드 방식"><label><input type="radio" name="downloadMode" value="individual" checked><span>개별</span></label><label><input type="radio" name="downloadMode" value="zip"><span>ZIP</span></label></div>
+      <button id="download" class="primary" disabled>선택 다운로드</button>
+      <p id="status" role="status"></p>
+    </footer>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,9 +1,8 @@
 import { createDownloadPlan, extensionFromUrl, makeArchiveName, matchesFilters } from './core.js';
-import { fetchZipEntries, startIndividualDownloads } from './downloads.js';
-import { scanImages } from './scanner.js';
-import { createZip } from './zip.js';
+import { createRuntime } from './app-runtime.js';
 
 const params = new URLSearchParams(location.search);
+const runtime = await createRuntime();
 const state = {
   images: [], selected: new Set(), extensions: new Set(), view: 'grid',
   sourceTabId: null, nextImageId: 0, collectedCount: 0
@@ -71,7 +70,7 @@ function mergeImages(images) {
 }
 
 async function collectorMessage(action) {
-  return chrome.tabs.sendMessage(state.sourceTabId, { action });
+  return runtime.collector(state.sourceTabId, action);
 }
 
 function updateCollectorControl(snapshot) {
@@ -91,16 +90,6 @@ async function refreshCollector() {
     renderExtensions();
     render();
   }
-}
-
-function downloadFromPage({ url, filename }) {
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.hidden = true;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
 }
 
 function renderExtensions() {
@@ -155,6 +144,13 @@ function createCard(image) {
   preview.src = image.url;
   preview.alt = '';
   preview.loading = 'lazy';
+  if (runtime.isRemote) {
+    preview.addEventListener('error', async () => {
+      if (preview.dataset.retried) return;
+      preview.dataset.retried = 'true';
+      try { preview.src = await runtime.preview(image.url); } catch { /* metadata remains usable */ }
+    });
+  }
   const meta = document.createElement('div');
   meta.className = 'meta';
   const name = document.createElement('div');
@@ -206,22 +202,16 @@ async function loadImages() {
   elements.summary.textContent = '이미지를 검색하는 중…';
   elements.rescan.disabled = true;
   try {
-    const requestedTabId = Number(params.get('tabId'));
-    const tab = Number.isInteger(requestedTabId) && requestedTabId > 0
-      ? await chrome.tabs.get(requestedTabId)
-      : (await chrome.tabs.query({ active: true, currentWindow: true }))[0];
-    if (!tab?.id || !/^https?:|^file:/.test(tab.url || '')) throw new Error('일반 웹페이지에서만 사용할 수 있습니다.');
-    state.sourceTabId = tab.id;
-    await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['collector.js'] });
-    const [[{ result }], collector] = await Promise.all([
-      chrome.scripting.executeScript({ target: { tabId: tab.id }, func: scanImages }),
-      collectorMessage('collector:status')
-    ]);
+    const requested = Number(params.get('tabId'));
+    const { tabId, images, collector } = await runtime.loadImages(
+      Number.isInteger(requested) && requested > 0 ? requested : null
+    );
+    state.sourceTabId = tabId;
     state.images = [];
     state.nextImageId = 0;
     state.selected.clear();
     state.extensions.clear();
-    mergeImages(result);
+    mergeImages(images);
     mergeImages(collector.images);
     updateCollectorControl(collector);
     renderExtensions();
@@ -236,30 +226,24 @@ async function loadImages() {
 }
 
 async function downloadIndividually(plan) {
-  const { completed, failed } = await startIndividualDownloads(plan, {
-    downloadFile: downloadFromPage,
-    fetcher: fetch,
-    urlApi: URL,
-    onProgress: ({ completed: done, failed: errors, total }) => {
+  const { completed, failed } = await runtime.download('individual', plan, null,
+    ({ completed: done, failed: errors, total }) => {
       elements.status.textContent = `${done + errors}/${total} 처리 중…`;
-    }
-  });
+    });
   elements.status.textContent = failed ? `${completed}개 완료, ${failed}개 실패` : `${completed}개 다운로드를 시작했습니다.`;
 }
 
 async function downloadAsZip(plan) {
-  const { files, failed } = await fetchZipEntries(plan, fetch, ({ processed, total }) => {
-    elements.status.textContent = `${processed}/${total} ZIP 준비 중…`;
-  });
-  if (!files.length) throw new Error('ZIP에 추가할 이미지를 가져오지 못했습니다.');
-
-  elements.status.textContent = 'ZIP 파일을 생성하는 중…';
-  const blobUrl = URL.createObjectURL(createZip(files));
-  try {
-    downloadFromPage({ url: blobUrl, filename: makeArchiveName(elements.baseName.value) });
-  } finally {
-    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
-  }
+  const { files, failed } = await runtime.download(
+    'zip',
+    plan,
+    makeArchiveName(elements.baseName.value),
+    ({ phase, processed = 0, total }) => {
+      elements.status.textContent = phase === 'archive'
+        ? 'ZIP 파일을 생성하는 중…'
+        : `${processed}/${total} ZIP 준비 중…`;
+    }
+  );
   elements.status.textContent = failed
     ? `ZIP 다운로드 시작 · ${files.length}개 포함, ${failed}개 실패`
     : `${files.length}개 이미지 ZIP 다운로드를 시작했습니다.`;
@@ -307,9 +291,8 @@ elements.collectionMode.addEventListener('change', async () => {
 });
 async function openSurface(surface) {
   if (!state.sourceTabId) return;
-  const response = await chrome.runtime.sendMessage({ action: 'openSurface', surface, sourceTabId: state.sourceTabId });
-  if (!response?.ok) throw new Error(response?.error || '화면을 열지 못했습니다.');
-  if (!params.has('surface')) window.close();
+  await runtime.openSurface(surface, state.sourceTabId);
+  if (!params.has('surface')) await runtime.closeHost();
 }
 elements.openWindow.addEventListener('click', () => openSurface('window').catch((error) => { elements.status.textContent = error.message; }));
 elements.openTab.addEventListener('click', () => openSurface('tab').catch((error) => { elements.status.textContent = error.message; }));
